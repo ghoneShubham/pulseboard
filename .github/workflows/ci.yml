@@ -1,0 +1,29 @@
+name: CI
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install -r requirements-dev.txt
+
+      # Migration drift pakadta hai - model badla par makemigrations nahi chalaya
+      - name: Check for missing migrations
+        run: python manage.py makemigrations --check --dry-run
+
+      - name: Django system checks
+        run: python manage.py check
+
+      # assertNumQueries yahin fail hoga agar koi N+1 introduce kare
+      - name: Tests
+        run: python manage.py test --verbosity 2
+
+      - name: Lint
+        run: ruff check .
+        continue-on-error: true

@@ -1,0 +1,9 @@
+{% load report_tags %}<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>{{ project.code }}</title></head>
+<body style="font:14px system-ui;margin:2rem">
+  <h1>{{ project }}</h1>
+  <h2>Top contributors</h2>
+  <ol>{% for c in contributors %}<li>#{{ c.rank }} {{ c.full_name }} — {{ c.total_minutes|minutes_as_hours }}</li>{% endfor %}</ol>
+  <h2>Last 14 days</h2>
+  <ul>{% for p in burndown %}<li>{{ p.day }}: {{ p.minutes|minutes_as_hours }} (cum {{ p.cumulative_minutes|minutes_as_hours }})</li>{% endfor %}</ul>
+</body></html>

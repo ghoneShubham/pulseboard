@@ -1,0 +1,5 @@
+-r requirements.txt
+
+django-debug-toolbar>=4.4     # har page pe SQL panel
+django-extensions>=3.2        # shell_plus --print-sql
+ruff>=0.6                     # lint + format

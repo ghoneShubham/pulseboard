@@ -1,0 +1,30 @@
+{% load report_tags %}<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>{{ app_name }} — Project report</title>
+<style>
+ body{font:14px/1.5 system-ui;margin:2rem;color:#111}
+ table{border-collapse:collapse;width:100%;margin-top:1rem}
+ th,td{padding:.5rem .75rem;border-bottom:1px solid #e5e7eb;text-align:left}
+ th{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:#6b7280}
+ .card{background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:1rem;display:inline-block}
+</style></head>
+<body>
+  <h1>Project report <small style="color:#6b7280">{{ current_org_slug }}</small></h1>
+  {% summary_card summary %}
+  <table>
+    <tr><th>Code</th><th>Name</th><th>Logged</th><th>Budget</th><th>Utilisation</th><th>Open</th><th>Health</th></tr>
+    {% for row in rows %}
+    <tr>
+      <td>{{ row.code }}</td>
+      <td>{{ row.name }}</td>
+      <td>{{ row.logged_minutes|minutes_as_hours }}</td>
+      <td>{{ row.budget_hours }}h</td>
+      <td>{{ row.utilisation }}%</td>
+      <td>{{ row.open_tasks }}</td>
+      <td>{% health_badge row.health %}</td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="7">No projects. Run <code>manage.py seed_demo</code>.</td></tr>
+    {% endfor %}
+  </table>
+</body></html>
