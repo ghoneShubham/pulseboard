@@ -75,6 +75,11 @@ class Project(TimeStampedModel, SoftDeleteModel):
         return f"Project<{self.code}>"
 
 
+class Tag(TimeStampedModel):
+    name = models.CharField(max_length=40, unique=True)
+
+    def __str__(self) -> str:
+        return self.name
 class Task(TimeStampedModel, SoftDeleteModel):
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="tasks")
     title = models.CharField(max_length=200)
@@ -89,6 +94,7 @@ class Task(TimeStampedModel, SoftDeleteModel):
     due_date = models.DateField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
     activity = GenericRelation("workspace.ActivityLog")
+    tags = models.ManyToManyField(Tag, related_name="tasks", blank=True, through="TaskTag")
 
     objects = TaskManager()
     all_objects = models.Manager()
@@ -118,6 +124,17 @@ class Task(TimeStampedModel, SoftDeleteModel):
     @property
     def is_open(self) -> bool:
         return self.status in TaskStatus.open_statuses()
+    
+class TaskTag(TimeStampedModel):
+    task = models.ForeignKey(Task, on_delete=models.CASCADE)
+    tag = models.ForeignKey(Tag, on_delete=models.CASCADE)
+    added_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
+    added_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["task", "tag"], name="uniq_task_tag"),
+        ]
 
 
 class TimeEntry(TimeStampedModel):
