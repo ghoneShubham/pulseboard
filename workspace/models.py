@@ -13,6 +13,9 @@ from core.enums import Priority, Role, TaskStatus
 from core.models import SoftDeleteModel, TimeStampedModel
 
 from .managers import TaskManager
+from django.db.models.functions import Now
+from django.core.exceptions import ValidationError
+from django.utils import timezone
 
 
 class Organization(TimeStampedModel):
@@ -137,6 +140,9 @@ class TaskTag(TimeStampedModel):
         ]
 
 
+
+
+
 class TimeEntry(TimeStampedModel):
     task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name="time_entries")
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="time_entries")
@@ -157,6 +163,11 @@ class TimeEntry(TimeStampedModel):
 
     def __str__(self) -> str:
         return f"{self.minutes}m on {self.task_id}"
+
+    def clean(self):
+        super().clean()
+        if self.started_at and self.started_at > timezone.now():
+            raise ValidationError({"started_at": "Cannot log time for a future date."})
 
 
 class ActivityLog(TimeStampedModel):
@@ -179,8 +190,6 @@ class ActivityLog(TimeStampedModel):
 
     def __str__(self) -> str:
         return f"{self.actor} {self.verb} {self.target}"
-
-
 class DailyProjectRollup(models.Model):
     """
     Pre-aggregated reporting table. Live aggregation slow hone lage toh
