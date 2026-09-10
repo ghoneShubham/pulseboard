@@ -128,6 +128,19 @@ class Task(TimeStampedModel, SoftDeleteModel):
     def is_open(self) -> bool:
         return self.status in TaskStatus.open_statuses()
     
+    
+    
+class CriticalTaskManager(models.Manager):
+    def get_queryset(self):
+        return super().get_queryset().filter(priority=Priority.CRITICAL)
+
+
+class CriticalTask(Task):
+    objects = CriticalTaskManager()
+
+    class Meta:
+        proxy = True
+    
 class TaskTag(TimeStampedModel):
     task = models.ForeignKey(Task, on_delete=models.CASCADE)
     tag = models.ForeignKey(Tag, on_delete=models.CASCADE)
