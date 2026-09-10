@@ -14,15 +14,14 @@ from core.enums import TaskStatus
 from .models import Task, TimeEntry
 
 
-#@receiver(pre_save, sender=Task, dispatch_uid="task_stamp_completed_at")
-#def stamp_completed_at(sender, instance: Task, **kwargs):
-    #"""Safety net - koi service bypass karke save kare toh bhi invariant bacha rahe."""
-    #if instance.status == TaskStatus.DONE and instance.completed_at is None:
-       # from django.utils import timezone
-
-        #instance.completed_at = timezone.now()
-    #elif instance.status != TaskStatus.DONE:
-        #instance.completed_at = None
+@receiver(pre_save, sender=Task, dispatch_uid="task_stamp_completed_at")
+def stamp_completed_at(sender, instance: Task, **kwargs):
+    """Safety net - koi service bypass karke save kare toh bhi invariant bacha rahe."""
+    if instance.status == TaskStatus.DONE and instance.completed_at is None:
+        from django.utils import timezone
+        instance.completed_at = timezone.now()
+    elif instance.status != TaskStatus.DONE:
+        instance.completed_at = None
 
 
 @receiver([post_save, post_delete], sender=TimeEntry, dispatch_uid="entry_bust_cache")
