@@ -23,7 +23,12 @@ class TaskQuerySet(SoftDeleteQuerySet):
 
     def overdue(self):
         return self.open().filter(due_date__lt=timezone.localdate())
-
+    
+    def stale(self):
+        """Open tasks jinpe 7 din se koi update nahi hua."""
+        cutoff = timezone.now() - timezone.timedelta(days=7)
+        return self.open().filter(updated_at__lt=cutoff)
+    
     def assigned_to(self, user):
         return self.filter(assignee=user)
 
@@ -70,3 +75,20 @@ class TaskManager(models.Manager.from_queryset(TaskQuerySet)):
 
     def get_queryset(self):
         return super().get_queryset().alive()
+
+class TimeEntryQuerySet(models.QuerySet):
+    def this_week(self):
+        """Current ISO week - Monday 00:00 se ab tak."""
+        today = timezone.localdate()
+        start_of_week = today - timezone.timedelta(days=today.weekday())
+        return self.filter(started_at__date__gte=start_of_week)
+
+    def by_user(self, user):
+        return self.filter(user=user)
+
+    def longer_than(self, minutes: int):
+        return self.filter(minutes__gt=minutes)
+
+
+class TimeEntryManager(models.Manager.from_queryset(TimeEntryQuerySet)):
+    pass

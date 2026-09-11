@@ -16,7 +16,7 @@ from .managers import TaskManager
 from django.db.models.functions import Now
 from django.core.exceptions import ValidationError
 from django.utils import timezone
-
+from .managers import TaskManager, TimeEntryManager
 
 class Organization(TimeStampedModel):
     name = models.CharField(max_length=120)
@@ -235,3 +235,18 @@ class ArchivedProject(Project):
     class Meta:
         proxy = True
         verbose_name = "archived project"
+
+
+
+
+class TimeEntry(TimeStampedModel):
+    task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name="time_entries")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="time_entries")
+    started_at = models.DateTimeField(db_index=True)
+    minutes = models.PositiveIntegerField()
+    note = models.CharField(max_length=200, blank=True)
+
+    objects = TimeEntryManager()
+
+    class Meta:
+        ...
