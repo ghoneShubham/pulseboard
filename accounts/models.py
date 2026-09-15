@@ -15,7 +15,7 @@ from core.models import TimeStampedModel
 
 class UserManager(BaseUserManager):
     use_in_migrations = True
-
+    #helper function 
     def _create(self, email: str, password: str | None, **extra):
         if not email:
             raise ValueError("Email required")

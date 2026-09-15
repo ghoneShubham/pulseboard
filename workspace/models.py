@@ -17,7 +17,7 @@ from django.db.models.functions import Now
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 from .managers import TaskManager, TimeEntryManager
-
+from .managers import TaskManager, TaskQuerySet, TimeEntryManager
 class Organization(TimeStampedModel):
     name = models.CharField(max_length=120)
     slug = models.SlugField(max_length=120, unique=True)
@@ -100,8 +100,8 @@ class Task(TimeStampedModel, SoftDeleteModel):
     tags = models.ManyToManyField(Tag, related_name="tasks", blank=True, through="TaskTag")
 
     objects = TaskManager()
-    all_objects = models.Manager()
-
+    all_objects = models.Manager.from_queryset(TaskQuerySet)()
+  
     class Meta:
         ordering = ["-priority", "due_date"]
         indexes = [
