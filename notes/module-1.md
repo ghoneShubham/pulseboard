@@ -28,8 +28,7 @@ Task 1.4
 -compositeindex : left to right pattern 
 -created a query for searching project-status-duedate 
 -according to index created 
-
--automatic index:
+-automatic index
 -status,duedate find  karna tha lekin bech se nahi find kar sakte 
 -automatic index create karta hai kuki humne index=True kiya tha 
 -due_date nahi karta badme filter karta hai staus =?
@@ -40,6 +39,7 @@ Task 1.5
 -in this #Proxi:
 -tables not created only the existing bheaviour changes 
 -created a new critical task model which is proxy 
+-and created the critical task manager for queryset
 -on the python shell we see  count changes 
 
 

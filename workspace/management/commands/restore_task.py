@@ -33,3 +33,8 @@ class Command(BaseCommand):
         Task.all_objects.filter(pk=task_id).restore()
 
         self.stdout.write(self.style.SUCCESS(f"Restored task {task_id} ('{task.title}')."))
+        
+        
+        
+        
+        
