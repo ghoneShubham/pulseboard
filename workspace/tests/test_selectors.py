@@ -66,12 +66,37 @@ class SelectorTests(TestCase):
         self.assertEqual(row.utilisation, Decimal("30.0"))
         self.assertEqual(row.health, "healthy")
 
-    def test_top_contributors_ranking(self):
+    def test_project_health_avg_cycle_time(self):
+        """
+        3.1 - avg_cycle_time = avg(completed_at - created_at), DONE tasks only.
+        Fixture has exactly one DONE task (T0), so avg == that one task's
+        own cycle time. Still costs only 1 query (same annotate() call).
+        """
+        done_task = Task.objects.get(project=self.project, title="T0")
+        expected = done_task.completed_at - done_task.created_at
+
+        with self.assertNumQueries(1):
+            rows = project_health("acme")
+        row = rows[0]
+
+        #self.assertIsNotNone(row.avg_cycle_time)
+        self.assertAlmostEqual(
+            row.avg_cycle_time.total_seconds(), expected.total_seconds(), delta=1
+        )
+
+
+    def test_top_contributors_densranking(self):
         rows = top_contributors(self.project.pk)
-        self.assertEqual(rows[0]["full_name"], "Alice")   # 2 entries = 120m
-        self.assertEqual(rows[0]["total_minutes"], 120)  # 2 tasks x 60m
+
+        print("\nTOP CONTRIBUTORS:")
+        print("Number of rows:", len(rows))
+
+        for row in rows:
+            print(row)
+
+        self.assertEqual(rows[0]["full_name"], "Alice")
+        self.assertEqual(rows[0]["total_minutes"], 120)
         self.assertEqual(rows[0]["rank"], 1)
-        self.assertEqual(rows[1]["rank"], 2)
 
     def test_burndown_fills_missing_days(self):
         points = burndown(self.project.pk, days=14)

@@ -14,9 +14,11 @@ from __future__ import annotations
 from datetime import date, timedelta
 
 from django.db.models import (
-    Avg, Case, CharField, Count, DecimalField, Exists, F, IntegerField,
-    OuterRef, Prefetch, Q, QuerySet, Subquery, Sum, Value, When, Window,
+    Avg, Case, CharField, Count, DecimalField, DurationField, Exists, F,
+    IntegerField, OuterRef, Prefetch, Q, QuerySet, Subquery, Sum, Value,
+    When, Window,
 )
+
 from django.db.models.functions import Coalesce, Rank, TruncDate
 from django.utils import timezone
 
@@ -80,6 +82,11 @@ def project_health(org_slug: str) -> list[ProjectHealth]:
             logged_minutes=Coalesce(Subquery(_logged_minutes_sq(), output_field=IntegerField()), 0),
             open_tasks=Coalesce(Subquery(_open_task_count_sq(), output_field=IntegerField()), 0),
             has_overdue=Exists(overdue_exists),
+            avg_cycle_time=Avg(
+                F("tasks__completed_at") - F("tasks__created_at"),
+                filter=Q(tasks__status=TaskStatus.DONE),
+                output_field=DurationField(),
+            ),
         )
         # Alag annotate() call - kyunki pichhli annotation ko yahan reference kar rahe hain
         .annotate(
@@ -99,6 +106,8 @@ def project_health(org_slug: str) -> list[ProjectHealth]:
             project_id=p.pk, code=p.code, name=p.name, budget_hours=p.budget_hours,
             logged_minutes=p.logged_minutes, open_tasks=p.open_tasks,
             health=str(p.health), has_overdue=p.has_overdue,
+            avg_cycle_time=p.avg_cycle_time or timedelta(0), 
+
         )
         for p in qs
     ]

@@ -5,9 +5,10 @@ IDE autocomplete + refactor safety milti hai (TS jaisa feel).
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from typing import Protocol, TypedDict
+
 
 
 @dataclass(frozen=True, slots=True)
@@ -20,6 +21,7 @@ class ProjectHealth:
     open_tasks: int
     health: str
     has_overdue: bool = False
+    avg_cycle_time: timedelta | None = None
 
     @property
     def logged_hours(self) -> Decimal:
