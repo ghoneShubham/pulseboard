@@ -19,7 +19,7 @@ from django.db.models import (
     When, Window,
 )
 
-from django.db.models.functions import Coalesce, Rank, TruncDate
+from django.db.models.functions import Coalesce, DenseRank, Rank, TruncDate
 from django.utils import timezone
 
 from core.decorators import cached_for, timed
@@ -123,7 +123,7 @@ def top_contributors(project_id: int, limit: int = 5) -> list[ContributorRow]:
         TimeEntry.objects.filter(task__project_id=project_id)
         .values("user_id", "user__full_name")
         .annotate(total_minutes=Sum("minutes"))
-        .annotate(rank=Window(expression=Rank(), order_by=F("total_minutes").desc()))
+        .annotate(rank=Window(expression=DenseRank(), order_by=F("total_minutes").desc()))
         .order_by("rank")[:limit]
     )
     return [

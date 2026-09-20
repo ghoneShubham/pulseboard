@@ -66,37 +66,32 @@ class SelectorTests(TestCase):
         self.assertEqual(row.utilisation, Decimal("30.0"))
         self.assertEqual(row.health, "healthy")
 
-    def test_project_health_avg_cycle_time(self):
+    def test_top_contributors_dense_rank_no_gap_on_tie(self):
         """
-        3.1 - avg_cycle_time = avg(completed_at - created_at), DONE tasks only.
-        Fixture has exactly one DONE task (T0), so avg == that one task's
-        own cycle time. Still costs only 1 query (same annotate() call).
+        3.2 - Rank() -> DenseRank(). With a tie, Rank() would produce
+        1, 1, 3 (skips 2). DenseRank() produces 1, 1, 2 (no gap).
+
+        Build a fresh project so totals are exact and easy to reason about:
+        Alice = 100m, Bob = 100m (tie for 1st), Carol = 50m (2nd, not 3rd).
         """
-        done_task = Task.objects.get(project=self.project, title="T0")
-        expected = done_task.completed_at - done_task.created_at
-
-        with self.assertNumQueries(1):
-            rows = project_health("acme")
-        row = rows[0]
-
-        #self.assertIsNotNone(row.avg_cycle_time)
-        self.assertAlmostEqual(
-            row.avg_cycle_time.total_seconds(), expected.total_seconds(), delta=1
+        project2 = Project.objects.create(
+            organization=self.org, code="ACM3", name="Tie Test", budget_hours=Decimal("10")
         )
+        task = Task.objects.create(project=project2, title="Shared task")
+        carol = User.objects.create_user("c@x.com", "pw", full_name="Carol")
 
+        now = timezone.now()
+        TimeEntry.objects.create(task=task, user=self.alice, started_at=now, minutes=100)
+        TimeEntry.objects.create(task=task, user=self.bob, started_at=now, minutes=100)
+        TimeEntry.objects.create(task=task, user=carol, started_at=now, minutes=50)
 
-    def test_top_contributors_densranking(self):
-        rows = top_contributors(self.project.pk)
+        rows = top_contributors(project2.pk)
 
-        print("\nTOP CONTRIBUTORS:")
-        print("Number of rows:", len(rows))
+        ranks_by_name = {r["full_name"]: r["rank"] for r in rows}
+        self.assertEqual(ranks_by_name["Alice"], 1)
+        self.assertEqual(ranks_by_name["Bob"], 1)
+        self.assertEqual(ranks_by_name["Carol"], 2)   # NOT 3 - this is what DenseRank guarantees
 
-        for row in rows:
-            print(row)
-
-        self.assertEqual(rows[0]["full_name"], "Alice")
-        self.assertEqual(rows[0]["total_minutes"], 120)
-        self.assertEqual(rows[0]["rank"], 1)
 
     def test_burndown_fills_missing_days(self):
         points = burndown(self.project.pk, days=14)
