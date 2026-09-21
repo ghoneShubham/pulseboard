@@ -46,6 +46,12 @@ class ContributorRow(TypedDict):
     full_name: str
     total_minutes: int
     rank: int
+    
+class WorkloadRow(TypedDict):
+    user_id: int
+    full_name: str
+    forecast_hours: Decimal
+    bucket: str
 
 
 class SupportsAudit(Protocol):

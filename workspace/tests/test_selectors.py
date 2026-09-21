@@ -11,8 +11,9 @@ from django.utils import timezone
 
 from core.enums import TaskStatus
 from workspace.models import Membership, Organization, Project, Task, TimeEntry
-from workspace.selectors import (burndown, org_summary, project_health,
-                                 project_list, top_contributors)
+from workspace.selectors import (burndown, idle_members, org_summary,
+                                 project_health, project_list,
+                                 top_contributors, workload_forecast)
 
 User = get_user_model()
 
@@ -115,3 +116,75 @@ class SelectorTests(TestCase):
         self.assertEqual(Task.objects.for_org("acme").open().overdue().count(), 1)
         t1 = Task.objects.for_org("acme").with_logged_minutes().get(title="T1")
         self.assertEqual(t1.logged_minutes, 30)  # Bob ka task
+
+
+    def test_idle_members_excludes_users_with_recent_entries(self):
+        """
+        3.3 - idle_members() uses Exists(), not Count()==0.
+        Alice has a TimeEntry from `now` (in setUpTestData), so she is
+        NOT idle. A second member with no recent entries IS idle.
+        """
+        carol = User.objects.create_user("c@x.com", "pw", full_name="Carol")
+        Membership.objects.create(organization=self.org, user=carol, role="member")
+
+        rows = list(idle_members("acme"))
+        idle_user_ids = {m.user_id for m in rows}
+
+        self.assertNotIn(self.alice.id, idle_user_ids)
+        self.assertIn(carol.id, idle_user_ids)
+
+    def test_idle_members_excludes_member_with_old_entry_only(self):
+        """A member whose only time entry is >7 days old still counts as idle."""
+        dave = User.objects.create_user("d@x.com", "pw", full_name="Dave")
+        Membership.objects.create(organization=self.org, user=dave, role="member")
+        TimeEntry.objects.create(
+            task=self.project.tasks.first(), user=dave,
+            started_at=timezone.now() - timedelta(days=10), minutes=30,
+        )
+
+        idle_user_ids = {m.user_id for m in idle_members("acme")}
+        self.assertIn(dave.id, idle_user_ids)
+
+    def test_idle_members_is_single_query(self):
+        with self.assertNumQueries(1):
+            list(idle_members("acme"))
+            
+
+    def test_workload_forecast_buckets_correctly(self):
+        today = timezone.localdate()
+
+        light_user = User.objects.create_user("light@x.com", "pw", full_name="Light")
+        heavy_user = User.objects.create_user("heavy@x.com", "pw", full_name="Heavy")
+
+        Task.objects.create(
+            project=self.project, title="Light task", status=TaskStatus.IN_PROGRESS,
+            assignee=light_user, estimate_hours=Decimal("5"),
+            due_date=today + timedelta(days=3),
+        )
+        Task.objects.create(
+            project=self.project, title="Heavy task 1", status=TaskStatus.IN_PROGRESS,
+            assignee=heavy_user, estimate_hours=Decimal("30"),
+            due_date=today + timedelta(days=5),
+        )
+        Task.objects.create(
+            project=self.project, title="Heavy task 2", status=TaskStatus.IN_PROGRESS,
+            assignee=heavy_user, estimate_hours=Decimal("30"),
+            due_date=today + timedelta(days=10),
+        )
+        Task.objects.create(
+            project=self.project, title="Too far out", status=TaskStatus.IN_PROGRESS,
+            assignee=light_user, estimate_hours=Decimal("100"),
+            due_date=today + timedelta(days=30),
+        )
+
+        rows = {r["full_name"]: r for r in workload_forecast("acme")}
+
+        self.assertEqual(rows["Light"]["forecast_hours"], Decimal("5"))
+        self.assertEqual(rows["Light"]["bucket"], "underloaded")
+
+        self.assertEqual(rows["Heavy"]["forecast_hours"], Decimal("60"))
+        self.assertEqual(rows["Heavy"]["bucket"], "overloaded")
+
+    def test_workload_forecast_is_single_query(self):
+        with self.assertNumQueries(1):
+            workload_forecast("acme")

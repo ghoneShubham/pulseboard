@@ -12,6 +12,7 @@ Prisma se aa rahe ho toh mapping:
 from __future__ import annotations
 
 from datetime import date, timedelta
+from django.contrib.auth import get_user_model
 
 from django.db.models import (
     Avg, Case, CharField, Count, DecimalField, DurationField, Exists, F,
@@ -24,10 +25,11 @@ from django.utils import timezone
 
 from core.decorators import cached_for, timed
 from core.enums import Health, TaskStatus
-from core.types import BurndownPoint, ContributorRow, ProjectHealth
+from core.types import BurndownPoint, ContributorRow, ProjectHealth, WorkloadRow
 from core.utils import daterange
-
-from .models import ActivityLog, Organization, Project, Task, TimeEntry
+from .models import ActivityLog, Membership, Organization, Project, Task, TimeEntry
+User = get_user_model()
+from django.contrib.auth import get_user_model
 
 
 # ---------------------------------------------------------------- N+1 ka ilaaj
@@ -217,3 +219,73 @@ def recent_activity(project: Project, limit: int = 10):
 
 def organizations_for(user) -> QuerySet[Organization]:
     return Organization.objects.filter(memberships__user=user).distinct()
+
+
+
+
+def idle_members(org_slug: str) -> QuerySet[Membership]:
+    """
+    Members jinhone pichhle 7 din me koi time log nahi kiya.
+
+    Exists() use kiya, Count()==0 nahi - kyunki Exists() ek match milte hi
+    ruk jaata hai (early exit), jabki Count() saare matching rows JOIN karke
+    pehle count karta hai, phir zero se compare karta hai. explain() se
+    confirm hota hai: Exists() = correlated subquery jo index (user_id,
+    started_at) dono use karta hai; Count() = full LEFT JOIN phir GROUP BY.
+    """
+    cutoff = timezone.now() - timedelta(days=7)
+
+    recent_entry = TimeEntry.objects.filter(
+        user_id=OuterRef("user_id"), started_at__gte=cutoff
+    )
+
+    return (
+        Membership.objects.filter(organization__slug=org_slug)
+        .annotate(has_recent_entry=Exists(recent_entry))
+        .filter(has_recent_entry=False)
+        .select_related("user")
+    )
+
+
+def workload_forecast(org_slug: str) -> list[WorkloadRow]:
+    """
+    Har user ke open tasks (due agle 14 din me) ka estimate_hours sum karke
+    underloaded / balanced / overloaded me bucket karta hai - 1 query,
+    Case/When se bucket, koi Python-side loop nahi.
+
+    NOTE: saare tasks__ conditions EK hi .filter() call me hain, isliye
+    ek hi JOIN banta hai (same alias) - alag .filter().filter() chain se
+    multi-valued relation trap lag sakta tha (multiple JOINs, galat count).
+    """
+    today = timezone.localdate()
+    horizon = today + timedelta(days=14)
+
+    rows = (
+        User.objects.filter(
+            tasks__project__organization__slug=org_slug,
+            tasks__status__in=TaskStatus.open_statuses(),
+            tasks__due_date__gte=today,
+            tasks__due_date__lte=horizon,
+            tasks__deleted_at__isnull=True,
+        )
+        .values("id", "full_name")
+        .annotate(forecast_hours=Sum("tasks__estimate_hours"))
+        .annotate(
+            bucket=Case(
+                When(forecast_hours__lt=20, then=Value("underloaded")),
+                When(forecast_hours__lte=40, then=Value("balanced")),
+                default=Value("overloaded"),
+                output_field=CharField(),
+            )
+        )
+        .order_by("-forecast_hours")
+    )
+
+    return [
+        WorkloadRow(
+            user_id=r["id"], full_name=r["full_name"],
+            forecast_hours=r["forecast_hours"], bucket=r["bucket"],
+        )
+        for r in rows
+    ]
+    
