@@ -10,8 +10,8 @@ from core.enums import TaskStatus
 from core.exceptions import BudgetExceeded, InvalidTransition, PermissionDenied
 from workspace.models import (ActivityLog, DailyProjectRollup, Membership,
                               Organization, Project, Task, TimeEntry)
-from workspace.services import archive_project, bump_priority, log_time, move_task
-
+from workspace.services import (archive_project, bump_priority, log_time,
+                                   move_task, reassign_task)
 User = get_user_model()
 
 
@@ -92,3 +92,69 @@ class RollupCommandTests(TestCase):
 
         self.assertEqual(DailyProjectRollup.objects.count(), 2)
         self.assertEqual(DailyProjectRollup.objects.order_by("-day").first().minutes, 45)
+
+
+
+
+
+class ReassignTaskTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.org = Organization.objects.create(name="Acme", slug="acme")
+        cls.other_org = Organization.objects.create(name="Globex", slug="globex")
+
+        cls.manager = User.objects.create_user("mgr@x.com", "pw", full_name="Manager")
+        cls.member = User.objects.create_user("mem@x.com", "pw", full_name="Member")
+        cls.teammate = User.objects.create_user("team@x.com", "pw", full_name="Teammate")
+        cls.outsider = User.objects.create_user("out@x.com", "pw", full_name="Outsider")
+
+        Membership.objects.create(organization=cls.org, user=cls.manager, role="manager")
+        Membership.objects.create(organization=cls.org, user=cls.member, role="member")
+        Membership.objects.create(organization=cls.org, user=cls.teammate, role="member")
+        # outsider belongs ONLY to a different org - never a member of cls.org
+        Membership.objects.create(organization=cls.other_org, user=cls.outsider, role="member")
+
+        cls.project = Project.objects.create(
+            organization=cls.org, code="ACM1", name="Atlas", budget_hours=Decimal("10")
+        )
+
+    def _task(self):
+        return Task.objects.create(project=self.project, title="T", assignee=self.member)
+
+    def test_manager_can_reassign_to_org_member(self):
+        task = self._task()
+        updated = reassign_task(task_id=task.pk, to_user=self.teammate, actor=self.manager)
+        self.assertEqual(updated.assignee_id, self.teammate.pk)
+
+    def test_reassign_writes_activity_log(self):
+        task = self._task()
+        reassign_task(task_id=task.pk, to_user=self.teammate, actor=self.manager)
+        log = ActivityLog.objects.get(verb="task.reassigned")
+        self.assertEqual(log.payload["from_user_id"], self.member.pk)
+        self.assertEqual(log.payload["to_user_id"], self.teammate.pk)
+
+    def test_non_manager_cannot_reassign(self):
+        task = self._task()
+        with self.assertRaises(PermissionDenied):
+            reassign_task(task_id=task.pk, to_user=self.teammate, actor=self.member)
+
+    def test_cannot_reassign_to_non_member(self):
+        task = self._task()
+        with self.assertRaises(PermissionDenied):
+            reassign_task(task_id=task.pk, to_user=self.outsider, actor=self.manager)
+
+    def test_non_manager_rejection_does_not_change_assignee(self):
+        task = self._task()
+        original_assignee_id = task.assignee_id
+        with self.assertRaises(PermissionDenied):
+            reassign_task(task_id=task.pk, to_user=self.teammate, actor=self.member)
+        task.refresh_from_db()
+        self.assertEqual(task.assignee_id, original_assignee_id)
+
+    def test_reassign_invalidates_org_summary_cache(self):
+        from workspace.selectors import org_summary
+        task = self._task()
+        org_summary("acme")  # warm the cache
+        reassign_task(task_id=task.pk, to_user=self.teammate, actor=self.manager)
+        # if invalidate() worked, this call recomputes rather than returning stale data
+        self.assertEqual(org_summary("acme")["total"], 1)

@@ -120,6 +120,38 @@ def bump_priority(*, task_ids: list[int], by: int = 1) -> int:
     )
 
 
+
+
+
+@transaction.atomic
+def reassign_task(*, task_id: int, to_user, actor) -> Task:
+    """
+    Rules: sirf manager reassign kar sakta hai; naya assignee usi org ka
+    member hona chahiye; activity log; cache invalidate.
+    """
+    task = Task.objects.select_related("project__organization").get(pk=task_id)
+    organization = task.project.organization
+
+    _assert_can_manage(actor, organization)  # sirf manager/owner
+
+    is_member = Membership.objects.filter(user=to_user, organization=organization).exists()
+    if not is_member:
+        raise PermissionDenied(
+            "New assignee must be a member of this organization.",
+            organization=organization.slug,
+        )
+
+    previous_assignee_id = task.assignee_id
+    task.assignee = to_user
+    task.save(update_fields=["assignee", "updated_at"])
+
+    record_activity(
+        actor, "task.reassigned", task,
+        **{"from_user_id": previous_assignee_id, "to_user_id": to_user.pk},
+    )
+    org_summary.invalidate(organization.slug)
+    return task
+
 @transaction.atomic
 def archive_project(*, project_id: int, actor) -> Project:
     project = Project.objects.select_related("organization").get(pk=project_id)
