@@ -1,11 +1,10 @@
 from datetime import timedelta
 from decimal import Decimal
-
+import logging
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.test import TestCase
 from django.utils import timezone
-
 from core.enums import TaskStatus
 from core.exceptions import BudgetExceeded, InvalidTransition, PermissionDenied
 from workspace.models import (ActivityLog, DailyProjectRollup, Membership,
@@ -158,3 +157,56 @@ class ReassignTaskTests(TestCase):
         reassign_task(task_id=task.pk, to_user=self.teammate, actor=self.manager)
         # if invalidate() worked, this call recomputes rather than returning stale data
         self.assertEqual(org_summary("acme")["total"], 1)
+        
+        
+        
+        
+        
+
+
+
+class _ListHandler(logging.Handler):
+    def __init__(self):
+        super().__init__()
+        self.records = []
+
+    def emit(self, record):
+        self.records.append(record)
+
+
+class OnCommitRollbackTests(TestCase):
+    """
+    4.4 - transaction.on_commit() ke bina, side-effect (log line) rollback
+    ke baad bhi chal jaata hai - jhooth bol raha hota hai ki kuch hua,
+    jabki TimeEntry actually DB me kabhi save hi nahi hua.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.org = Organization.objects.create(name="RB", slug="rb")
+        cls.project = Project.objects.create(
+            organization=cls.org, code="RB1", name="RB", budget_hours=Decimal("10")
+        )
+        cls.task = Task.objects.create(project=cls.project, title="T")
+        cls.user = User.objects.create_user("rb@x.com", "pw", full_name="RB User")
+
+    def test_log_does_not_fire_after_rollback(self):
+        """This should PASS with on_commit() in place."""
+        from django.db import transaction
+
+        handler = _ListHandler()
+        logger = logging.getLogger("pulseboard")
+        logger.addHandler(handler)
+        logger.setLevel(logging.INFO)
+
+        try:
+            with transaction.atomic():
+                log_time(task_id=self.task.pk, user=self.user, started_at=timezone.now(), minutes=30)
+                raise RuntimeError("force rollback")
+        except RuntimeError:
+            pass
+        finally:
+            logger.removeHandler(handler)
+
+        self.assertEqual(len(handler.records), 0, "log fired even though the transaction rolled back")
+        self.assertFalse(TimeEntry.objects.filter(task=self.task).exists())

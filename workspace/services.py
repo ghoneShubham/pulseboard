@@ -86,10 +86,13 @@ def log_time(*, task_id: int, user, started_at: datetime, minutes: int, note: st
 
     budget_minutes = int(task.project.budget_hours * 60)
     if budget_minutes:
-        logged = (
-            TimeEntry.objects.filter(task__project_id=task.project_id)
-            .aggregate(total=Sum("minutes"))["total"] or 0
-        )
+        # Denormalized counter - Project.logged_minutes - instead of a live
+        # Sum() over every TimeEntry every single time. O(1) read vs O(n).
+        # Trade-off: this number can drift from reality if it's ever updated
+        # outside this function (bulk edits, direct SQL, a bug in another
+        # code path) - there's no DB constraint tying it back to the real
+        # sum of TimeEntry.minutes for this project.
+        logged = task.project.logged_minutes
         if logged + minutes > budget_minutes * Decimal("1.2"):
             raise BudgetExceeded(
                 "Logging this entry would blow the project budget by >20%.",
@@ -100,9 +103,12 @@ def log_time(*, task_id: int, user, started_at: datetime, minutes: int, note: st
         task=task, user=user, started_at=started_at, minutes=minutes, note=note
     )
 
-    # transaction commit hone ke BAAD hi side-effect chalao.
-    # Warna rollback hua toh email/webhook already ja chuka hoga.
+    # F() update - race-free even if two log_time() calls run concurrently.
+    Project.objects.filter(pk=task.project_id).update(logged_minutes=F("logged_minutes") + minutes)
+
     transaction.on_commit(lambda: logger.info("time logged: entry=%s", entry.pk))
+    #causes failing test 
+    #logger.info("time logged: entry=%s", entry.pk)
 
     record_activity(user, "time.logged", task, minutes=minutes)
     org_summary.invalidate(task.project.organization.slug)

@@ -59,6 +59,7 @@ class Project(TimeStampedModel, SoftDeleteModel):
         validators=[MinValueValidator(Decimal("0"))],
     )
     is_archived = models.BooleanField(default=False)
+    logged_minutes = models.PositiveIntegerField(default=0)
     activity = GenericRelation("workspace.ActivityLog")
 
     class Meta:
