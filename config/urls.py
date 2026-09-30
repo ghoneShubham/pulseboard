@@ -11,5 +11,11 @@ urlpatterns = [
     path("reports/projects/async/", project_report_async, name="project-report-async"),
     path("projects/<int:pk>/", ProjectDetailView.as_view(), name="project-detail"),
     path("projects/<int:pk>/pulse/", project_pulse, name="project-pulse"),
+    path("reports/projects/async/", project_report_async, name="project-report-async"),
     path("api-auth/", include("rest_framework.urls")),
 ]
+
+
+
+
+

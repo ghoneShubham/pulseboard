@@ -3,6 +3,8 @@ Class-based views + mixins. CBV ka asli faayda: reusable behaviour
 (LoginRequiredMixin, pagination, form handling) inherit ho jaata hai.
 """
 from __future__ import annotations
+from django.contrib.auth.decorators import login_required
+from django.shortcuts import render
 
 import asyncio
 
@@ -13,6 +15,19 @@ from django.views.generic import DetailView, ListView
 
 from .models import Project
 from .selectors import burndown, org_summary, project_health, top_contributors
+
+@login_required
+async def project_report_async(request):
+    slug = request.GET.get("org") or getattr(request, "org_slug", "") or ""
+
+    rows, summary = await asyncio.gather(
+        sync_to_async(project_health)(slug),
+        sync_to_async(org_summary)(slug),
+    )
+    # render in a sync thread: context processors touch request.user (DB access)
+    return await sync_to_async(render)(
+        request, "workspace/project_report.html", {"rows": rows, "summary": summary}
+    )
 
 
 class OrgScopedMixin:

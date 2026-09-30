@@ -25,6 +25,7 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    "core.middleware.RequestIDMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -96,10 +97,23 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
-    "handlers": {"console": {"class": "logging.StreamHandler"}},
+    "filters": {
+        "request_id": {"()": "core.log_filters.RequestIDFilter"},
+    },
+    "formatters": {
+        "with_id": {
+            "format": "%(asctime)s %(levelname)s [%(request_id)s] %(name)s: %(message)s",
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "filters": ["request_id"],   # on the HANDLER, not the logger
+            "formatter": "with_id",
+        },
+    },
     "loggers": {
         "pulseboard": {"handlers": ["console"], "level": "INFO"},
-        # SQL dekhna ho toh level DEBUG kar do
         "django.db.backends": {"handlers": ["console"], "level": "WARNING"},
     },
 }
