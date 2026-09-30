@@ -1,13 +1,14 @@
 from django.db.models import IntegerField, Subquery
 from django.db.models.functions import Coalesce
+from django.db.models import Q
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
-
-from ..models import Project, Task
+from core.enums import Role
+from ..models import Membership, Project, Task, TimeEntry
 from ..selectors import _logged_minutes_sq, burndown, org_summary, top_contributors
 from ..services import log_time, move_task
-from .permissions import IsOrgMember
+from .permissions import IsOrgMember, IsOwnEntryOrManager
 from .serializers import (LogTimeSerializer, MoveTaskSerializer,
                           ProjectSerializer, TaskSerializer, TimeEntrySerializer)
 
@@ -82,3 +83,32 @@ class TaskViewSet(viewsets.ModelViewSet):
         payload.is_valid(raise_exception=True)
         entry = log_time(task_id=int(pk), user=request.user, **payload.validated_data)
         return Response(TimeEntrySerializer(entry).data, status=status.HTTP_201_CREATED)
+    
+class TimeEntryViewSet(viewsets.ModelViewSet):
+    """
+    list/create/delete only - no update.
+    """
+    serializer_class = TimeEntrySerializer
+    permission_classes = [IsOwnEntryOrManager]
+    http_method_names = ["get", "post", "delete", "head", "options"]
+
+    def get_queryset(self):
+        user = self.request.user
+        manager_org_ids = Membership.objects.filter(
+            user=user, role__in=[Role.OWNER, Role.MANAGER]
+        ).values_list("organization_id", flat=True)
+
+        qs = (
+            TimeEntry.objects.filter(task__project__organization__memberships__user=user)
+            .filter(Q(user=user) | Q(task__project__organization_id__in=manager_org_ids))
+            .select_related("task__project__organization", "user")
+            .distinct()
+        )
+
+        org_slug = self.request.query_params.get("org")
+        if org_slug:
+            qs = qs.filter(task__project__organization__slug=org_slug)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)

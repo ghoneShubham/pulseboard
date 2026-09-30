@@ -34,7 +34,24 @@ class ProjectReportView(LoginRequiredMixin, OrgScopedMixin, ListView):
         ctx = super().get_context_data(**kwargs)
         ctx["summary"] = org_summary(self.get_org_slug())
         return ctx
+    async def project_report_async(request):
+        """
+        5.3 - Async version of ProjectReportView, same pattern as project_pulse.
+        """
+        org_slug = request.GET.get("org")
 
+        rows, summary = await asyncio.gather(
+            sync_to_async(project_health)(org_slug),
+            sync_to_async(org_summary)(org_slug),
+        )
+
+        return JsonResponse({
+            "rows": [
+                {"code": r.code, "name": r.name, "health": r.health, "logged_minutes": r.logged_minutes}
+                for r in rows
+            ],
+            "summary": summary,
+        })
 
 class ProjectDetailView(LoginRequiredMixin, DetailView):
     model = Project
