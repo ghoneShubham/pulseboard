@@ -2,15 +2,16 @@ from django.db.models import IntegerField, Subquery
 from django.db.models.functions import Coalesce
 from django.db.models import Q
 from rest_framework import status, viewsets
+from rest_framework.views import APIView
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from core.enums import Role
 from ..models import Membership, Project, Task, TimeEntry
 from ..selectors import _logged_minutes_sq, burndown, org_summary, top_contributors
-from ..services import log_time, move_task
+from ..services import log_time, move_task, trigger_rollup
 from .permissions import IsOrgMember, IsOwnEntryOrManager
 from .serializers import (LogTimeSerializer, MoveTaskSerializer,
-                          ProjectSerializer, TaskSerializer, TimeEntrySerializer)
+                          ProjectSerializer, TaskSerializer, TimeEntrySerializer,RollupSerializer)
 
 
 class ProjectViewSet(viewsets.ReadOnlyModelViewSet):
@@ -112,3 +113,13 @@ class TimeEntryViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
+        
+class OrgRollupView(APIView):
+    throttle_scope = "rollup"   # ScopedRateThrottle is already a default class
+
+    def post(self, request, slug):
+        payload = RollupSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        days = payload.validated_data["days"]
+        rows = trigger_rollup(actor=request.user, org_slug=slug, days=days)
+        return Response({"org": slug, "days": days, "rows_upserted": rows})

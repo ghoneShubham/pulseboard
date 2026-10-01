@@ -8,19 +8,21 @@ bulk operations use bypass kar dete hain.
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 
 from django.contrib.contenttypes.models import ContentType
 from django.db import transaction
-from django.db.models import F, Sum
+from django.db.models import Count, F, Sum
 from django.utils import timezone
+from django.db.models.functions import TruncDate
 
 from core.enums import Role, TaskStatus
 from core.exceptions import BudgetExceeded, InvalidTransition, PermissionDenied
 from core.types import SupportsAudit
 
-from .models import ActivityLog, Membership, Organization, Project, Task, TimeEntry
+from .models import (ActivityLog, DailyProjectRollup, Membership, Organization,
+                     Project, Task, TimeEntry)
 from .selectors import org_summary
 
 logger = logging.getLogger("pulseboard")
@@ -170,3 +172,60 @@ def archive_project(*, project_id: int, actor) -> Project:
     record_activity(actor, "project.archived", project)
     org_summary.invalidate(project.organization.slug)
     return project
+
+
+def rebuild_rollups(*, days: int, project_id: int | None = None,
+                    organization_id: int | None = None) -> int:
+    """Upsert DailyProjectRollup rows for the last `days` days. Returns row count."""
+    end = timezone.localdate()
+    start = end - timedelta(days=days - 1)
+
+    qs = TimeEntry.objects.filter(started_at__date__gte=start)
+    if project_id:
+        qs = qs.filter(task__project_id=project_id)
+    if organization_id:
+        qs = qs.filter(task__project__organization_id=organization_id)
+
+    rows = (
+        qs.annotate(day=TruncDate("started_at"))
+        .values("task__project_id", "day")
+        .annotate(
+            minutes=Sum("minutes"),
+            entries=Count("id"),
+            contributors=Count("user_id", distinct=True),
+        )
+        .order_by()
+    )
+    objects = [
+        DailyProjectRollup(
+            project_id=r["task__project_id"], day=r["day"],
+            minutes=r["minutes"], entries=r["entries"], contributors=r["contributors"],
+        )
+        for r in rows
+    ]
+    with transaction.atomic():
+        DailyProjectRollup.objects.bulk_create(
+            objects,
+            update_conflicts=True,
+            update_fields=["minutes", "entries", "contributors"],
+            unique_fields=["project", "day"],
+            batch_size=500,
+        )
+    return len(objects)
+
+
+def trigger_rollup(*, actor, org_slug: str, days: int) -> int:
+    """Owner-only, org-scoped rebuild. Non-member and non-owner get the SAME error,
+    so the response doesn't reveal whether an org slug exists."""
+    membership = (
+        Membership.objects.select_related("organization")
+        .filter(user=actor, organization__slug=org_slug)
+        .first()
+    )
+    if membership is None or membership.role != Role.OWNER:
+        raise PermissionDenied("Only the organization owner can rebuild rollups.",
+                               required_role="owner")
+    org = membership.organization
+    count = rebuild_rollups(days=days, organization_id=org.pk)
+    record_activity(actor, "rollup.rebuilt", org, days=days, rows=count)
+    return count

@@ -18,6 +18,7 @@ from django.utils import timezone
 
 from core.context_managers import stopwatch
 from workspace.models import DailyProjectRollup, Project, TimeEntry
+from workspace.services import rebuild_rollups
 
 
 class Command(BaseCommand):
@@ -68,3 +69,19 @@ class Command(BaseCommand):
 
         if verbose:
             self.stdout.write(self.style.SUCCESS(f"{len(objects)} rollup rows upserted ({start} -> {end})"))
+            
+class Command(BaseCommand):
+    help = "Rebuild DailyProjectRollup for the last N days."
+
+    def add_arguments(self, parser):
+        parser.add_argument("--days", type=int, default=14)
+        parser.add_argument("--project", type=int, default=None)
+
+    def handle(self, *args, **opts):
+        verbose = opts.get("verbosity", 1)
+        with stopwatch("rollup", enabled=verbose > 0):
+            count = rebuild_rollups(days=opts["days"], project_id=opts["project"])
+        if verbose:
+            self.stdout.write(self.style.SUCCESS(
+                f"{count} rollup rows upserted (last {opts['days']} days)"
+            ))

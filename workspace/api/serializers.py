@@ -60,3 +60,5 @@ class TimeEntrySerializer(serializers.ModelSerializer):
         model = TimeEntry
         fields = ["id", "task", "user", "started_at", "minutes", "note"]
         read_only_fields = ["user"]
+class RollupSerializer(serializers.Serializer):
+    days = serializers.IntegerField(min_value=1, max_value=90, default=14)

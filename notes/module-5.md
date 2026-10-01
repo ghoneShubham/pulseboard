@@ -17,3 +17,12 @@ pattern as project_pulse - runs project_health() and org_summary()
 "concurrently."
 - SYNC:  ~5.2ms
 - ASYNC: ~4.6ms
+#task5.4:
+-custom middlerware for middleware + log filter
+The plan is three pieces: a ContextVar that holds the ID, a middleware that sets and resets it per request, and a logging.Filter that stamps the ID onto every log record.
+
+#task5.6:
+-Trigger daily_rollup via API
+Extract the rebuild logic into services.rebuild_rollups().
+Add services.trigger_rollup() for the owner check and audit log.
+Add a thin APIView with throttle_scope = "rollup".

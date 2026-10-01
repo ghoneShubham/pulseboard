@@ -83,7 +83,7 @@ REST_FRAMEWORK = {
     "DEFAULT_PAGINATION_CLASS": "core.pagination.CursorishPagination",
     "PAGE_SIZE": 20,
     "DEFAULT_THROTTLE_CLASSES": ["rest_framework.throttling.ScopedRateThrottle"],
-    "DEFAULT_THROTTLE_RATES": {"reports": "60/min"},
+    "DEFAULT_THROTTLE_RATES": {"reports": "60/min", "rollup": "2/hour"},
     "EXCEPTION_HANDLER": "core.exceptions.domain_exception_handler",
 }
 
@@ -116,4 +116,5 @@ LOGGING = {
         "pulseboard": {"handlers": ["console"], "level": "INFO"},
         "django.db.backends": {"handlers": ["console"], "level": "WARNING"},
     },
+    
 }
